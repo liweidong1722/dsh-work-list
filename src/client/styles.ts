@@ -47,6 +47,14 @@ export const WORK_LIST_STYLES = `
 .wl-content{min-width:0;padding:20px 22px;border:1px solid var(--wl-border);border-radius:12px;background:var(--wl-surface);box-shadow:0 2px 8px rgba(32,42,58,.02)}
 .wl-content-top{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:19px}
 .wl-view-title{margin:0;color:var(--wl-text-2);font-size:13px;font-weight:650;letter-spacing:.02em}
+.wl-content-tools{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}
+.wl-search{display:flex;align-items:center;gap:6px;min-width:170px;height:32px;padding:0 8px;border:1px solid var(--wl-border);border-radius:8px;background:var(--wl-surface-2);color:var(--wl-muted)}
+.wl-search:focus-within{border-color:var(--wl-brand);box-shadow:0 0 0 2px color-mix(in srgb,var(--wl-brand) 10%,transparent)}
+.wl-search input{width:120px;min-width:0;border:0;outline:none;background:transparent;color:var(--wl-text);font:inherit;font-size:11px}
+.wl-search input::placeholder{color:var(--wl-muted)}
+.wl-search button{border:0;background:transparent;color:var(--wl-muted);font:inherit;font-size:15px;line-height:1;cursor:pointer}
+.wl-tool-button{height:30px;padding:0 9px;border:1px solid var(--wl-border);border-radius:7px;background:transparent;color:var(--wl-text-2);font:inherit;font-size:11px;cursor:pointer}
+.wl-tool-button:hover{border-color:var(--wl-brand);color:var(--wl-brand);background:color-mix(in srgb,var(--wl-brand) 6%,transparent)}
 .wl-filter{display:flex;align-items:center;gap:3px;padding:3px;border-radius:9px;background:var(--wl-hover)}
 .wl-filter-button{padding:6px 10px;border:0;border-radius:7px;background:transparent;color:var(--wl-muted);font:inherit;font-size:11px;cursor:pointer}
 .wl-filter-button.is-active{background:var(--wl-surface-2);color:var(--wl-brand);box-shadow:0 1px 4px rgba(30,42,70,.06)}
@@ -79,5 +87,5 @@ export const WORK_LIST_STYLES = `
 .wl-foot{display:flex;justify-content:space-between;gap:10px;margin-top:16px;color:#aab1bc;font-size:10px}.wl-save-state{display:inline-flex;align-items:center;gap:5px}.wl-save-dot{width:6px;height:6px;border-radius:50%;background:#64b58a}.wl-save-state.is-saving .wl-save-dot{background:#c3a45f}.wl-save-state.is-fallback .wl-save-dot{background:#d17a7a}
 .wl-page.is-dark{--wl-bg:var(--dsw-alias-bg-base,#17191d);--wl-surface:var(--dsw-alias-bg-layer-1,#202329);--wl-surface-2:var(--dsw-alias-bg-layer-2,#24272d);--wl-text:var(--dsw-alias-label-primary,#e8eaed);--wl-text-2:var(--dsw-alias-label-secondary,#c1c6cf);--wl-muted:var(--dsw-alias-label-tertiary,#858c98);--wl-border:var(--dsw-alias-border-l1,#30343d);--wl-border-2:var(--dsw-alias-border-l2,#3a404a);--wl-brand:var(--dsw-alias-brand-primary,#7ea2ff);--wl-hover:var(--dsw-alias-interactive-bg-hover,#292d34)}
 .wl-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-@media(max-width:760px){.wl-page{padding:18px}.wl-top{align-items:flex-start;flex-direction:column;margin-bottom:17px}.wl-typography{align-self:flex-start}.wl-layout{grid-template-columns:1fr;gap:12px}.wl-nav{display:flex;gap:5px;overflow:auto;padding:7px}.wl-nav-label,.wl-nav-add,.wl-category-form{display:none}.wl-nav-item{flex:0 0 auto}.wl-nav-delete{display:inline-flex}.wl-nav-button{width:auto;min-width:max-content;padding:0 10px}.wl-nav-count{margin-left:2px}.wl-content{padding:16px 13px}.wl-task-date{display:none}}
+@media(max-width:760px){.wl-page{padding:18px}.wl-top{align-items:flex-start;flex-direction:column;margin-bottom:17px}.wl-typography{align-self:flex-start}.wl-layout{grid-template-columns:1fr;gap:12px}.wl-content-top{align-items:flex-start;flex-direction:column}.wl-content-tools{width:100%;justify-content:flex-start}.wl-search{flex:1;min-width:160px}.wl-search input{width:100%}.wl-nav{display:flex;gap:5px;overflow:auto;padding:7px}.wl-nav-label,.wl-nav-add,.wl-category-form{display:none}.wl-nav-item{flex:0 0 auto}.wl-nav-delete{display:inline-flex}.wl-nav-button{width:auto;min-width:max-content;padding:0 10px}.wl-nav-count{margin-left:2px}.wl-content{padding:16px 13px}.wl-task-date{display:none}}
 `

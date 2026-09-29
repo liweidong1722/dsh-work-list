@@ -57,6 +57,7 @@ export function WorkListPanel() {
   const [saveStatus, setSaveStatus] = useState<'loading' | 'saving' | 'saved' | 'fallback'>('loading')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [filter, setFilter] = useState('active')
+  const [searchQuery, setSearchQuery] = useState('')
   const [draft, setDraft] = useState('')
   const [draftCategory, setDraftCategory] = useState('inbox')
   const [categoryDraft, setCategoryDraft] = useState('')
@@ -71,6 +72,7 @@ export function WorkListPanel() {
   const revisionRef = useRef<string | null>(null)
   const historyRef = useRef<string[]>([])
   const historyIndexRef = useRef(-1)
+  const importFileRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     const sync = () => setScheme(detectWorkListScheme())
@@ -184,10 +186,12 @@ export function WorkListPanel() {
   const visibleCategories = selectedCategory === 'all'
     ? state.categories
     : state.categories.filter(category => category.id === selectedCategory)
+  const normalizedSearch = searchQuery.trim().toLocaleLowerCase()
   const visibleTasks = state.tasks.filter(task => {
     if (selectedCategory !== 'all' && task.categoryId !== selectedCategory) return false
-    if (filter === 'active') return !task.completed
-    if (filter === 'completed') return task.completed
+    if (filter === 'active' && task.completed) return false
+    if (filter === 'completed' && !task.completed) return false
+    if (normalizedSearch && !task.title.toLocaleLowerCase().includes(normalizedSearch)) return false
     return true
   })
   const hasAnyTask = visibleTasks.length > 0
@@ -217,6 +221,36 @@ export function WorkListPanel() {
     event.preventDefault()
     setState(current => renameTitle(current, titleDraft))
     setEditingTitle(false)
+  }
+
+  function exportWorkList() {
+    const raw = JSON.stringify(state, null, 2) + '\n'
+    const blob = new Blob([raw], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `dsh-work-list-${new Date().toISOString().slice(0, 10)}.json`
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  async function importWorkList(file: File) {
+    try {
+      const raw = await file.text()
+      const parsed = JSON.parse(raw) as { version?: unknown }
+      if (!parsed || parsed.version !== 1) throw new Error('unsupported work-list version')
+      finishTaskEdit()
+      setState(decodeState(raw))
+      setSelectedCategory('all')
+      setFilter('active')
+      setSearchQuery('')
+    } catch {
+      window.alert('导入失败：请选择有效的 dsh-work-list JSON 文件。')
+    } finally {
+      if (importFileRef.current) importFileRef.current.value = ''
+    }
   }
 
   function beginTaskEdit(id: string, title: string, html?: string) {
@@ -328,7 +362,23 @@ export function WorkListPanel() {
 
   function handleTaskEditKey(event: KeyboardEvent<HTMLDivElement>) {
     const mod = event.ctrlKey || event.metaKey
-    if (mod && event.key.toLowerCase() === 'z') {
+    const key = event.key.toLowerCase()
+    if (mod && !event.shiftKey && (key === 'b' || key === 'i' || key === 'u')) {
+      event.preventDefault()
+      runRichCommand(key === 'b' ? 'bold' : key === 'i' ? 'italic' : 'underline')
+      return
+    }
+    if (mod && event.shiftKey && event.code === 'Digit7') {
+      event.preventDefault()
+      runRichCommand('insertOrderedList')
+      return
+    }
+    if (mod && event.shiftKey && event.code === 'Digit8') {
+      event.preventDefault()
+      runRichCommand('insertUnorderedList')
+      return
+    }
+    if (mod && key === 'z') {
       event.preventDefault()
       applyHistoryStep(event.shiftKey ? 1 : -1)
       return
@@ -472,7 +522,29 @@ export function WorkListPanel() {
           <section className="wl-content" aria-label="工作清单内容">
             <div className="wl-content-top">
               <h2 className="wl-view-title">{selectedCategory === 'all' ? '我的工作笔记' : categoryName(selectedCategory)}</h2>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div className="wl-content-tools">
+                <label className="wl-search">
+                  <span aria-hidden="true">⌕</span>
+                  <input
+                    value={searchQuery}
+                    onChange={event => setSearchQuery(event.target.value)}
+                    placeholder="搜索事项"
+                    aria-label="搜索事项"
+                  />
+                  {searchQuery && <button type="button" title="清除搜索" aria-label="清除搜索" onClick={() => setSearchQuery('')}>×</button>}
+                </label>
+                <button className="wl-tool-button" type="button" onClick={exportWorkList}>导出</button>
+                <button className="wl-tool-button" type="button" onClick={() => importFileRef.current?.click()}>导入</button>
+                <input
+                  ref={importFileRef}
+                  className="wl-sr-only"
+                  type="file"
+                  accept="application/json,.json"
+                  onChange={event => {
+                    const file = event.target.files?.[0]
+                    if (file) void importWorkList(file)
+                  }}
+                />
                 {counts.completed > 0 && <button className="wl-clear" type="button" onClick={() => setState(current => clearCompleted(current))}>清空已完成</button>}
                 <div className="wl-filter" role="group" aria-label="事项筛选">
                   {FILTERS.map(option => <button key={option.id} className={`wl-filter-button ${filter === option.id ? 'is-active' : ''}`} type="button" aria-pressed={filter === option.id} onClick={() => setFilter(option.id)}>{option.label}</button>)}
@@ -521,8 +593,9 @@ export function WorkListPanel() {
                                     <button className="wl-rich-button wl-color-button" type="button" title="灰色文字" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('foreColor', '#9a9a9a')}>A<span className="wl-color-line is-muted" /></button>
                                     <button className="wl-rich-button wl-color-button" type="button" title="红色文字" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('foreColor', '#e34d59')}>A<span className="wl-color-line is-red" /></button>
                                     <button className="wl-rich-button wl-color-button" type="button" title="蓝色文字" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('foreColor', '#4e7fe8')}>A<span className="wl-color-line is-blue" /></button>
+                                    <button className="wl-rich-button is-text" type="button" title="清除文字格式" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('removeFormat')}>清格式</button>
                                     <span className="wl-rich-sep" />
-                                    <button className="wl-rich-button is-text" type="button" title="无序列表" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('insertUnorderedList')}>• 列表</button>
+                                    <button className="wl-rich-button is-text" type="button" title="无序列表 · Ctrl+Shift+8" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('insertUnorderedList')}>• 列表</button>
                                     <button className="wl-rich-button is-text" type="button" title="编号列表" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('insertOrderedList')}>1. 列表</button>
                                     <button className="wl-rich-button" type="button" title="减少缩进" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('outdent')}>⇤</button>
                                     <button className="wl-rich-button" type="button" title="增加缩进" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('indent')}>⇥</button>
@@ -569,8 +642,14 @@ export function WorkListPanel() {
             ) : (
               <div className="wl-empty">
                 <div className="wl-empty-icon"><ListGlyph /></div>
-                <p className="wl-empty-title">{filter === 'completed' ? '还没有完成的事项' : '这页还很清爽'}</p>
-                <p className="wl-empty-copy">在上方写下第一件事，按 Enter 或点击「添加」。清单会自动保存到 ~/.dsh/work-list.json。</p>
+                <p className="wl-empty-title">
+                  {normalizedSearch ? '没有找到匹配事项' : filter === 'completed' ? '还没有完成的事项' : '这页还很清爽'}
+                </p>
+                <p className="wl-empty-copy">
+                  {normalizedSearch
+                    ? '换一个关键词试试，搜索会匹配事项里的全部文字内容。'
+                    : '在上方写下第一件事，按 Ctrl+Enter 或点击「添加」。清单会自动保存到 ~/.dsh/work-list.json。'}
+                </p>
               </div>
             )}
 
