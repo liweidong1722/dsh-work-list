@@ -77,3 +77,7 @@ pnpm build
 ## 当前状态
 
 项目仍处于早期迭代阶段，数据格式目前为 version 1。升级数据结构时应优先保持对现有 `~/.dsh/work-list.json` 的兼容。
+
+## License
+
+本项目采用 [MIT License](./LICENSE) 开源许可。
