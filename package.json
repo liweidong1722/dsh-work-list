@@ -34,8 +34,7 @@
     "build": "pnpm clean && tsdown",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.mjs",
-    "check": "pnpm typecheck && pnpm test && pnpm build",
-    "prepack": "pnpm build"
+    "check": "pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
     "react": "^18.3.1"
