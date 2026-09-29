@@ -76,6 +76,10 @@ export function decodeState(raw) {
       categoryId: typeof task.categoryId === 'string' && categoryIds.has(task.categoryId) ? task.categoryId : 'inbox',
       completed: task.completed === true,
       createdAt: Number.isFinite(task.createdAt) && Number.isFinite(new Date(task.createdAt).getTime()) ? task.createdAt : Date.now(),
+      ...(Number.isFinite(task.deletedAt) ? { deletedAt: task.deletedAt } : {}),
+      ...(typeof task.deletedCategoryId === 'string' && task.deletedCategoryId.trim()
+        ? { deletedCategoryId: task.deletedCategoryId.trim() }
+        : {}),
     }]
   })
 
@@ -124,13 +128,69 @@ export function toggleTask(state, id) {
   return { ...state, tasks: state.tasks.map(task => task.id === id ? { ...task, completed: !task.completed } : task) }
 }
 
-export function removeTask(state, id) {
-  return { ...state, tasks: state.tasks.filter(task => task.id !== id) }
+export function removeTask(state, id, { deletedAt = Date.now() } = {}) {
+  if (!state.tasks.some(task => task.id === id && task.deletedAt === undefined)) return state
+  return {
+    ...state,
+    tasks: state.tasks.map(task => task.id === id
+      ? { ...task, deletedAt, deletedCategoryId: task.categoryId }
+      : task),
+  }
 }
 
-export function clearCompleted(state) {
-  const tasks = state.tasks.filter(task => !task.completed)
+export function restoreTask(state, id) {
+  const task = state.tasks.find(candidate => candidate.id === id && candidate.deletedAt !== undefined)
+  if (!task) return state
+  const categoryId = typeof task.deletedCategoryId === 'string'
+    && state.categories.some(category => category.id === task.deletedCategoryId)
+    ? task.deletedCategoryId
+    : 'inbox'
+  return {
+    ...state,
+    tasks: state.tasks.map(candidate => {
+      if (candidate.id !== id) return candidate
+      const restored = { ...candidate, categoryId }
+      delete restored.deletedAt
+      delete restored.deletedCategoryId
+      return restored
+    }),
+  }
+}
+
+export function permanentlyRemoveTask(state, id) {
+  const task = state.tasks.find(candidate => candidate.id === id)
+  if (task?.deletedAt === undefined) return state
+  return { ...state, tasks: state.tasks.filter(candidate => candidate.id !== id) }
+}
+
+export function emptyTrash(state) {
+  const tasks = state.tasks.filter(task => task.deletedAt === undefined)
   return tasks.length === state.tasks.length ? state : { ...state, tasks }
+}
+
+export function clearCompleted(state, { deletedAt = Date.now() } = {}) {
+  let changed = false
+  const tasks = state.tasks.map(task => {
+    if (!task.completed || task.deletedAt !== undefined) return task
+    changed = true
+    return { ...task, deletedAt, deletedCategoryId: task.categoryId }
+  })
+  return changed ? { ...state, tasks } : state
+}
+
+export function reorderTask(state, sourceId, targetId, position = 'before') {
+  if (sourceId === targetId) return state
+  const source = state.tasks.find(task => task.id === sourceId && task.deletedAt === undefined)
+  const target = state.tasks.find(task => task.id === targetId && task.deletedAt === undefined)
+  if (!source || !target || source.categoryId !== target.categoryId) return state
+
+  const tasks = [...state.tasks]
+  const sourceIndex = tasks.findIndex(task => task.id === sourceId)
+  const [moved] = tasks.splice(sourceIndex, 1)
+  const targetIndex = tasks.findIndex(task => task.id === targetId)
+  const insertAt = position === 'after' ? targetIndex + 1 : targetIndex
+  tasks.splice(insertAt, 0, moved)
+  return { ...state, tasks }
 }
 
 export function addCategory(state, name, { id = makeId('category') } = {}) {

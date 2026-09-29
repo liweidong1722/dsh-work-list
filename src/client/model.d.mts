@@ -14,6 +14,8 @@ export interface WorkListTask {
   categoryId: string
   completed: boolean
   createdAt: number
+  deletedAt?: number
+  deletedCategoryId?: string
 }
 
 export interface WorkListState {
@@ -35,8 +37,12 @@ export function addTask(state: WorkListState, title: string, options?: { categor
 export function updateTaskContent(state: WorkListState, id: string, title: string, html?: string): WorkListState
 export function updateTaskTitle(state: WorkListState, id: string, title: string): WorkListState
 export function toggleTask(state: WorkListState, id: string): WorkListState
-export function removeTask(state: WorkListState, id: string): WorkListState
-export function clearCompleted(state: WorkListState): WorkListState
+export function removeTask(state: WorkListState, id: string, options?: { deletedAt?: number }): WorkListState
+export function restoreTask(state: WorkListState, id: string): WorkListState
+export function permanentlyRemoveTask(state: WorkListState, id: string): WorkListState
+export function emptyTrash(state: WorkListState): WorkListState
+export function clearCompleted(state: WorkListState, options?: { deletedAt?: number }): WorkListState
+export function reorderTask(state: WorkListState, sourceId: string, targetId: string, position?: 'before' | 'after'): WorkListState
 export function addCategory(state: WorkListState, name: string, options?: { id?: string }): WorkListState
 export function removeCategory(state: WorkListState, id: string): WorkListState
 export function renameTitle(state: WorkListState, title: string): WorkListState
