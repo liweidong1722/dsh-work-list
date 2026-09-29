@@ -1,0 +1,11 @@
+node_modules/
+lib/
+coverage/
+*.log
+*.tmp
+.DS_Store
+.idea/
+.vscode/
+.env
+.env.*
+!.env.example

@@ -1,0 +1,4 @@
+# Add the work-list package to the DSH web bundle loader.
+- insert:
+    - id: dsh-work-list
+      name: 'dsh-work-list'

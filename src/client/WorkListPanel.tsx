@@ -1,0 +1,595 @@
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react'
+import {
+  addCategory,
+  addTask,
+  clearCompleted,
+  createInitialState,
+  decodeState,
+  FONT_FAMILIES,
+  makeId,
+  removeCategory,
+  removeTask,
+  renameTitle,
+  setTypography,
+  STORAGE_KEY,
+  toggleTask,
+  updateTaskContent,
+} from './model.mjs'
+import { loadWorkList, saveWorkList } from './rpc.js'
+import { htmlToPlainText, plainTextToHtml, sanitizeRichHtml } from './richText.js'
+import { WORK_LIST_STYLES } from './styles.js'
+import { detectWorkListScheme, type WorkListScheme } from './theme.js'
+
+
+const FILTERS = [
+  { id: 'active', label: '待完成' },
+  { id: 'completed', label: '已完成' },
+  { id: 'all', label: '全部' },
+]
+
+const FONT_LABELS = { system: '系统', rounded: '圆润', serif: '衬线' }
+
+function taskDate(value: number): string {
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return ''
+  return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(date)
+}
+
+
+function growTextarea(element: HTMLTextAreaElement): void {
+  element.style.height = 'auto'
+  element.style.height = `${Math.min(Math.max(element.scrollHeight, 38), 180)}px`
+}
+
+function ListGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M8.5 6.5h11M8.5 12h11M8.5 17.5h11" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <path d="m3.5 6.5 1.2 1.2 2-2.4M3.5 12l1.2 1.2 2-2.4M3.5 17.5l1.2 1.2 2-2.4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+export function WorkListPanel() {
+  const [state, setState] = useState(createInitialState)
+  const [loaded, setLoaded] = useState(false)
+  const [scheme, setScheme] = useState<WorkListScheme>(detectWorkListScheme)
+  const [saveStatus, setSaveStatus] = useState<'loading' | 'saving' | 'saved' | 'fallback'>('loading')
+  const [selectedCategory, setSelectedCategory] = useState('all')
+  const [filter, setFilter] = useState('active')
+  const [draft, setDraft] = useState('')
+  const [draftCategory, setDraftCategory] = useState('inbox')
+  const [categoryDraft, setCategoryDraft] = useState('')
+  const [addingCategory, setAddingCategory] = useState(false)
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState('')
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
+  const [editingTaskHtml, setEditingTaskHtml] = useState('')
+  const editorRef = useRef<HTMLDivElement | null>(null)
+  const editorShellRef = useRef<HTMLDivElement | null>(null)
+  const selectionRef = useRef<Range | null>(null)
+  const revisionRef = useRef<string | null>(null)
+  const historyRef = useRef<string[]>([])
+  const historyIndexRef = useRef(-1)
+
+  useEffect(() => {
+    const sync = () => setScheme(detectWorkListScheme())
+    sync()
+
+    const bodyObserver = new MutationObserver(sync)
+    const rootObserver = new MutationObserver(sync)
+    bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme', 'data-theme'] })
+    rootObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'data-theme'] })
+
+    const media = typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-color-scheme: dark)')
+      : null
+    media?.addEventListener?.('change', sync)
+
+    return () => {
+      bodyObserver.disconnect()
+      rootObserver.disconnect()
+      media?.removeEventListener?.('change', sync)
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    void (async () => {
+      let next = createInitialState()
+      try {
+        const result = await loadWorkList()
+        if (!active) return
+        revisionRef.current = result.revision ?? null
+        if (typeof result.raw === 'string' && result.raw.trim()) {
+          next = decodeState(result.raw)
+        } else {
+          const cached = window.localStorage.getItem(STORAGE_KEY)
+          next = decodeState(cached)
+          if (cached) {
+            const saved = await saveWorkList(next, revisionRef.current)
+            if (saved.conflict) {
+              revisionRef.current = saved.revision ?? null
+              next = decodeState(saved.raw ?? null)
+            } else {
+              revisionRef.current = saved.revision ?? revisionRef.current
+            }
+          }
+        }
+        if (!active) return
+        setState(next)
+        setSaveStatus('saved')
+      } catch {
+        try {
+          next = decodeState(window.localStorage.getItem(STORAGE_KEY))
+        } catch {
+          next = createInitialState()
+        }
+        if (!active) return
+        setState(next)
+        setSaveStatus('fallback')
+      } finally {
+        if (active) setLoaded(true)
+      }
+    })()
+
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    if (!loaded) return
+    setSaveStatus(current => current === 'fallback' ? current : 'saving')
+    const timer = window.setTimeout(() => {
+      void saveWorkList(state, revisionRef.current).then(result => {
+        if (result.conflict) {
+          revisionRef.current = result.revision ?? null
+          const latest = decodeState(result.raw ?? null)
+          setState(latest)
+          try { window.localStorage.removeItem(STORAGE_KEY) } catch { /* ignore */ }
+          setSaveStatus('saved')
+          return
+        }
+        revisionRef.current = result.revision ?? revisionRef.current
+        try { window.localStorage.removeItem(STORAGE_KEY) } catch { /* ignore */ }
+        setSaveStatus('saved')
+      }).catch(() => {
+        try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state)) } catch { /* ignore */ }
+        setSaveStatus('fallback')
+      })
+    }, 180)
+    return () => window.clearTimeout(timer)
+  }, [loaded, state])
+
+  useEffect(() => {
+    if (!editingTaskId) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const shell = editorShellRef.current
+      const target = event.target
+      if (!shell || !(target instanceof Node) || shell.contains(target)) return
+      finishTaskEdit()
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    return () => document.removeEventListener('pointerdown', handlePointerDown, true)
+  }, [editingTaskId])
+
+  const counts = useMemo(() => {
+    const result = { all: state.tasks.length, active: 0, completed: 0 }
+    for (const task of state.tasks) result[task.completed ? 'completed' : 'active'] += 1
+    return result
+  }, [state.tasks])
+
+  const visibleCategories = selectedCategory === 'all'
+    ? state.categories
+    : state.categories.filter(category => category.id === selectedCategory)
+  const visibleTasks = state.tasks.filter(task => {
+    if (selectedCategory !== 'all' && task.categoryId !== selectedCategory) return false
+    if (filter === 'active') return !task.completed
+    if (filter === 'completed') return task.completed
+    return true
+  })
+  const hasAnyTask = visibleTasks.length > 0
+  const categoryName = (id: string): string => state.categories.find(category => category.id === id)?.name ?? '日常'
+  const fontFamily = FONT_FAMILIES[state.fontFamily] ?? FONT_FAMILIES.system
+
+  function submitTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const categoryId = selectedCategory === 'all' ? draftCategory : selectedCategory
+    setState(current => addTask(current, draft, { categoryId }))
+    setDraft('')
+  }
+
+  function submitCategory(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const id = makeId('category')
+    const next = addCategory(state, categoryDraft, { id })
+    if (next === state) return
+    setState(next)
+    setSelectedCategory(id)
+    setDraftCategory(id)
+    setCategoryDraft('')
+    setAddingCategory(false)
+  }
+
+  function saveTitle(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setState(current => renameTitle(current, titleDraft))
+    setEditingTitle(false)
+  }
+
+  function beginTaskEdit(id: string, title: string, html?: string) {
+    const initialHtml = sanitizeRichHtml(html?.trim() ? html : plainTextToHtml(title))
+    selectionRef.current = null
+    historyRef.current = [initialHtml]
+    historyIndexRef.current = 0
+    setEditingTaskId(id)
+    setEditingTaskHtml(initialHtml)
+  }
+
+  function rememberRichSelection() {
+    const editor = editorRef.current
+    const selection = window.getSelection()
+    if (!editor || !selection || selection.rangeCount === 0) return
+    const range = selection.getRangeAt(0)
+    const anchor = range.commonAncestorContainer
+    if (anchor === editor || editor.contains(anchor)) selectionRef.current = range.cloneRange()
+  }
+
+  function restoreRichSelection() {
+    const editor = editorRef.current
+    if (!editor) return
+    editor.focus()
+    const range = selectionRef.current
+    if (!range) return
+    const selection = window.getSelection()
+    if (!selection) return
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }
+
+  function pushEditorHistory() {
+    const editor = editorRef.current
+    if (!editor) return
+    const html = sanitizeRichHtml(editor.innerHTML)
+    const history = historyRef.current
+    const index = historyIndexRef.current
+    if (history[index] === html) return
+    const next = history.slice(0, index + 1)
+    next.push(html)
+    if (next.length > 120) next.shift()
+    historyRef.current = next
+    historyIndexRef.current = next.length - 1
+  }
+
+  function placeCaretAtEnd() {
+    const editor = editorRef.current
+    if (!editor) return
+    const range = document.createRange()
+    range.selectNodeContents(editor)
+    range.collapse(false)
+    const selection = window.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+    selectionRef.current = range.cloneRange()
+  }
+
+  function applyHistoryStep(direction: -1 | 1) {
+    const nextIndex = historyIndexRef.current + direction
+    if (nextIndex < 0 || nextIndex >= historyRef.current.length) return
+    const editor = editorRef.current
+    if (!editor) return
+    historyIndexRef.current = nextIndex
+    const html = historyRef.current[nextIndex] ?? ''
+    editor.innerHTML = html
+    setEditingTaskHtml(html)
+    editor.focus()
+    placeCaretAtEnd()
+  }
+
+  function syncRichDraft() {
+    pushEditorHistory()
+    rememberRichSelection()
+  }
+
+  function runRichCommand(command: string, value?: string) {
+    restoreRichSelection()
+    try {
+      document.execCommand(command, false, value)
+    } catch {
+      // Browsers without a command simply keep the current content.
+    }
+    pushEditorHistory()
+    rememberRichSelection()
+  }
+
+  function finishTaskEdit() {
+    if (!editingTaskId) return
+    const html = sanitizeRichHtml(editorRef.current?.innerHTML ?? editingTaskHtml)
+    const text = htmlToPlainText(html)
+    if (text && html !== editingTaskHtml) {
+      setState(current => updateTaskContent(current, editingTaskId, text, html))
+    }
+    setEditingTaskId(null)
+    setEditingTaskHtml('')
+    selectionRef.current = null
+    historyRef.current = []
+    historyIndexRef.current = -1
+  }
+
+  function cancelTaskEdit() {
+    setEditingTaskId(null)
+    setEditingTaskHtml('')
+    selectionRef.current = null
+    historyRef.current = []
+    historyIndexRef.current = -1
+  }
+
+  function handleTaskEditKey(event: KeyboardEvent<HTMLDivElement>) {
+    const mod = event.ctrlKey || event.metaKey
+    if (mod && event.key.toLowerCase() === 'z') {
+      event.preventDefault()
+      applyHistoryStep(event.shiftKey ? 1 : -1)
+      return
+    }
+    if (mod && event.key.toLowerCase() === 'y') {
+      event.preventDefault()
+      applyHistoryStep(1)
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      cancelTaskEdit()
+      return
+    }
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault()
+      finishTaskEdit()
+      return
+    }
+    if (event.key === 'Tab') {
+      event.preventDefault()
+      runRichCommand(event.shiftKey ? 'outdent' : 'indent')
+    }
+  }
+
+  const rootStyle = {
+    '--wl-font-size': `${state.fontSize}px`,
+    '--wl-font-family': fontFamily,
+  } as CSSProperties
+
+  return (
+    <main className={`wl-page is-${scheme}`} style={rootStyle}>
+      <style>{WORK_LIST_STYLES}</style>
+      <div className="wl-frame">
+        <header className="wl-top">
+          <div>
+            <p className="wl-eyebrow">MY NOTE · WORK LIST</p>
+            {editingTitle ? (
+              <form onSubmit={saveTitle}>
+                <input
+                  autoFocus
+                  className="wl-title-input"
+                  value={titleDraft}
+                  maxLength={80}
+                  onChange={event => setTitleDraft(event.target.value)}
+                  onBlur={() => {
+                    if (titleDraft.trim()) setState(current => renameTitle(current, titleDraft))
+                    setEditingTitle(false)
+                  }}
+                  onKeyDown={event => { if (event.key === 'Escape') setEditingTitle(false) }}
+                  aria-label="清单标题"
+                />
+              </form>
+            ) : (
+              <h1 className="wl-title">
+                {state.title}
+                <button className="wl-title-edit" type="button" title="编辑标题" aria-label="编辑标题" onClick={() => { setTitleDraft(state.title); setEditingTitle(true) }}>✎</button>
+              </h1>
+            )}
+            <p className="wl-subtitle">像记笔记一样整理工作，勾掉一项，就前进一步。</p>
+          </div>
+
+          <div className="wl-typography" aria-label="文字设置">
+            <span className="wl-typography-label">字体</span>
+            <button className="wl-size-button" type="button" aria-label="缩小字号" disabled={state.fontSize <= 12} onClick={() => setState(current => setTypography(current, { fontSize: current.fontSize - 1 }))}>−</button>
+            <output className="wl-size-value" aria-live="polite">{state.fontSize}px</output>
+            <button className="wl-size-button" type="button" aria-label="放大字号" disabled={state.fontSize >= 24} onClick={() => setState(current => setTypography(current, { fontSize: current.fontSize + 1 }))}>＋</button>
+            <label className="wl-sr-only" htmlFor="wl-font-family">字体样式</label>
+            <select id="wl-font-family" className="wl-font-select" value={state.fontFamily} onChange={event => setState(current => setTypography(current, { fontFamily: event.target.value }))}>
+              {Object.entries(FONT_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+            </select>
+          </div>
+        </header>
+
+        <form className="wl-add" onSubmit={submitTask}>
+          <span className="wl-add-mark" aria-hidden="true">＋</span>
+          <label className="wl-sr-only" htmlFor="wl-new-task">添加一项</label>
+          <textarea
+            id="wl-new-task"
+            className="wl-add-input"
+            value={draft}
+            rows={1}
+            maxLength={4000}
+            placeholder="记下要做的事 · Enter 换行 · Ctrl+Enter 添加"
+            onChange={event => setDraft(event.target.value)}
+            onInput={event => growTextarea(event.currentTarget)}
+            onKeyDown={event => {
+              if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                event.preventDefault()
+                event.currentTarget.form?.requestSubmit()
+              }
+            }}
+          />
+          <select className="wl-category-select" aria-label="事项分类" value={selectedCategory === 'all' ? draftCategory : selectedCategory} onChange={event => setDraftCategory(event.target.value)}>
+            {state.categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </select>
+          <button className="wl-add-submit" type="submit" disabled={!draft.trim()}>添加</button>
+        </form>
+
+        <div className="wl-layout">
+          <nav className="wl-nav" aria-label="清单分类">
+            <div className="wl-nav-label">NOTEBOOK</div>
+            <button className={`wl-nav-button ${selectedCategory === 'all' ? 'is-active' : ''}`} type="button" onClick={() => setSelectedCategory('all')}>
+              <span className="wl-nav-icon"><ListGlyph /></span>
+              <span className="wl-nav-name">全部事项</span>
+              <span className="wl-nav-count">{counts.all}</span>
+            </button>
+            <div className="wl-nav-label">分类</div>
+            {state.categories.map(category => {
+              const count = state.tasks.filter(task => task.categoryId === category.id && !task.completed).length
+              return (
+                <div className="wl-nav-item" key={category.id}>
+                  <button className={`wl-nav-button ${selectedCategory === category.id ? 'is-active' : ''}`} type="button" onClick={() => setSelectedCategory(category.id)}>
+                    <span className="wl-nav-icon" aria-hidden="true">◦</span>
+                    <span className="wl-nav-name">{category.name}</span>
+                    <span className="wl-nav-count">{count}</span>
+                  </button>
+                  {!category.builtIn && (
+                    <button
+                      className="wl-nav-delete"
+                      type="button"
+                      title={`删除分类 ${category.name}`}
+                      aria-label={`删除分类 ${category.name}`}
+                      onClick={() => { setState(current => removeCategory(current, category.id)); if (selectedCategory === category.id) setSelectedCategory('all') }}
+                    >×</button>
+                  )}
+                </div>
+              )
+            })}
+            {addingCategory ? (
+              <form className="wl-category-form" onSubmit={submitCategory}>
+                <label className="wl-sr-only" htmlFor="wl-new-category">新分类名称</label>
+                <input id="wl-new-category" autoFocus className="wl-category-input" value={categoryDraft} maxLength={32} placeholder="分类名称" onChange={event => setCategoryDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { setAddingCategory(false); setCategoryDraft('') } }} />
+                <button className="wl-category-save" type="submit" aria-label="保存分类">✓</button>
+              </form>
+            ) : (
+              <button className="wl-nav-add" type="button" onClick={() => setAddingCategory(true)}>＋ 新建分类</button>
+            )}
+          </nav>
+
+          <section className="wl-content" aria-label="工作清单内容">
+            <div className="wl-content-top">
+              <h2 className="wl-view-title">{selectedCategory === 'all' ? '我的工作笔记' : categoryName(selectedCategory)}</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {counts.completed > 0 && <button className="wl-clear" type="button" onClick={() => setState(current => clearCompleted(current))}>清空已完成</button>}
+                <div className="wl-filter" role="group" aria-label="事项筛选">
+                  {FILTERS.map(option => <button key={option.id} className={`wl-filter-button ${filter === option.id ? 'is-active' : ''}`} type="button" aria-pressed={filter === option.id} onClick={() => setFilter(option.id)}>{option.label}</button>)}
+                </div>
+              </div>
+            </div>
+
+            {hasAnyTask ? (
+              <div>
+                {visibleCategories.map(category => {
+                  const tasks = visibleTasks.filter(task => task.categoryId === category.id)
+                  if (selectedCategory === 'all' && tasks.length === 0) return null
+                  return (
+                    <section className="wl-section" key={category.id}>
+                      <header className="wl-section-head">
+                        <h3 className="wl-section-title">{category.name}</h3>
+                        <span className="wl-section-count">{tasks.length} 项</span>
+                      </header>
+                      <div className="wl-task-list">
+                        {tasks.map(task => (
+                          <div className={`wl-task ${task.completed ? 'is-complete' : ''}`} key={task.id}>
+                            <input className="wl-check" type="checkbox" checked={task.completed} aria-label={`${task.completed ? '标记未完成' : '标记完成'}：${task.title}`} onChange={() => setState(current => toggleTask(current, task.id))} />
+                            <div className="wl-task-main">
+                              {editingTaskId === task.id ? (
+                                <div className="wl-editor-shell" ref={editorShellRef}>
+                                  <div className="wl-rich-toolbar" role="toolbar" aria-label="文字格式">
+                                    <select
+                                      className="wl-rich-format"
+                                      aria-label="段落样式"
+                                      defaultValue="p"
+                                      onMouseDown={rememberRichSelection}
+                                      onChange={event => runRichCommand('formatBlock', event.target.value)}
+                                    >
+                                      <option value="p">正文</option>
+                                      <option value="h1">标题 1</option>
+                                      <option value="h2">标题 2</option>
+                                      <option value="h3">标题 3</option>
+                                    </select>
+                                    <span className="wl-rich-sep" />
+                                    <button className="wl-rich-button" type="button" title="加粗" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('bold')}><b>B</b></button>
+                                    <button className="wl-rich-button" type="button" title="斜体" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('italic')}><i>I</i></button>
+                                    <button className="wl-rich-button" type="button" title="下划线" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('underline')}><u>U</u></button>
+                                    <button className="wl-rich-button" type="button" title="删除线" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('strikeThrough')}><s>S</s></button>
+                                    <span className="wl-rich-sep" />
+                                    <button className="wl-rich-button wl-color-button" type="button" title="黑色文字" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('foreColor', scheme === 'dark' ? '#e8eaed' : '#252525')}>A<span className="wl-color-line is-default" /></button>
+                                    <button className="wl-rich-button wl-color-button" type="button" title="灰色文字" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('foreColor', '#9a9a9a')}>A<span className="wl-color-line is-muted" /></button>
+                                    <button className="wl-rich-button wl-color-button" type="button" title="红色文字" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('foreColor', '#e34d59')}>A<span className="wl-color-line is-red" /></button>
+                                    <button className="wl-rich-button wl-color-button" type="button" title="蓝色文字" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('foreColor', '#4e7fe8')}>A<span className="wl-color-line is-blue" /></button>
+                                    <span className="wl-rich-sep" />
+                                    <button className="wl-rich-button is-text" type="button" title="无序列表" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('insertUnorderedList')}>• 列表</button>
+                                    <button className="wl-rich-button is-text" type="button" title="编号列表" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('insertOrderedList')}>1. 列表</button>
+                                    <button className="wl-rich-button" type="button" title="减少缩进" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('outdent')}>⇤</button>
+                                    <button className="wl-rich-button" type="button" title="增加缩进" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('indent')}>⇥</button>
+                                    <button className="wl-rich-button is-text" type="button" title="插入虚线分隔" onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('insertHorizontalRule')}>虚线</button>
+                                    <span className="wl-rich-hint">Ctrl+Enter 保存</span>
+                                  </div>
+                                  <div
+                                    ref={editorRef}
+                                    autoFocus
+                                    className="wl-task-edit"
+                                    contentEditable
+                                    suppressContentEditableWarning
+                                    role="textbox"
+                                    aria-multiline="true"
+                                    aria-label={`编辑：${task.title}`}
+                                    dangerouslySetInnerHTML={{ __html: editingTaskHtml }}
+                                    onInput={syncRichDraft}
+                                    onKeyUp={rememberRichSelection}
+                                    onMouseUp={rememberRichSelection}
+                                    onKeyDown={handleTaskEditKey}
+                                  />
+                                </div>
+                              ) : (
+                                <div
+                                  className="wl-task-title"
+                                  title="点击编辑"
+                                  onClick={() => beginTaskEdit(task.id, task.title, task.html)}
+                                  dangerouslySetInnerHTML={{
+                                    __html: sanitizeRichHtml(task.html?.trim() ? task.html : plainTextToHtml(task.title)),
+                                  }}
+                                />
+                              )}
+                            </div>
+                            {selectedCategory !== 'all' && <span className="wl-task-category">{category.name}</span>}
+                            <time className="wl-task-date" dateTime={new Date(task.createdAt).toISOString()}>{taskDate(task.createdAt)}</time>
+                            <button className="wl-task-delete" type="button" aria-label={`删除：${task.title}`} title="删除事项" onClick={() => setState(current => removeTask(current, task.id))}>×</button>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="wl-empty">
+                <div className="wl-empty-icon"><ListGlyph /></div>
+                <p className="wl-empty-title">{filter === 'completed' ? '还没有完成的事项' : '这页还很清爽'}</p>
+                <p className="wl-empty-copy">在上方写下第一件事，按 Enter 或点击「添加」。清单会自动保存到 ~/.dsh/work-list.json。</p>
+              </div>
+            )}
+
+            <footer className="wl-foot">
+              <span>{counts.active} 项待完成</span>
+              <span className={`wl-save-state is-${saveStatus}`}>
+                <i className="wl-save-dot" aria-hidden="true" />
+                {saveStatus === 'saved'
+                  ? '已保存 · ~/.dsh/work-list.json'
+                  : saveStatus === 'saving'
+                    ? '正在保存…'
+                    : saveStatus === 'fallback'
+                      ? '宿主暂不可用 · 已保留浏览器缓存'
+                      : '正在读取清单…'}
+              </span>
+            </footer>
+          </section>
+        </div>
+      </div>
+    </main>
+  )
+}
