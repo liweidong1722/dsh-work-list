@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEven
 import {
   addCategory,
   addTask,
-  clearCompleted,
   createInitialState,
   decodeState,
   emptyTrash,
@@ -843,7 +842,6 @@ export function WorkListPanel() {
                   trashTasks.length > 0 && <button className="wl-clear" type="button" onClick={() => { if (window.confirm('清空回收站？此操作无法恢复。')) setState(current => emptyTrash(current)) }}>清空回收站</button>
                 ) : (
                   <>
-                    {counts.completed > 0 && <button className="wl-clear" type="button" title="将已完成事项移到回收站" onClick={() => setState(current => clearCompleted(current))}>清空已完成</button>}
                     <div className="wl-filter" role="group" aria-label="事项筛选">
                       {FILTERS.map(option => <button key={option.id} className={`wl-filter-button ${filter === option.id ? 'is-active' : ''}`} type="button" aria-pressed={filter === option.id} onClick={() => setFilter(option.id)}>{option.label}</button>)}
                     </div>
