@@ -1,6 +1,6 @@
 {
   "name": "dsh-work-list",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "本地优先、支持富文本编辑的 DSH Web 侧边栏工作清单插件",
   "license": "MIT",
   "author": "liweidong1722",
