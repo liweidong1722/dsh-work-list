@@ -773,7 +773,40 @@ export function WorkListPanel() {
               <span className="wl-nav-name">全部事项</span>
               <span className="wl-nav-count">{counts.all}</span>
             </button>
-            <div className="wl-nav-label">分类</div>
+            <div className="wl-nav-section-head">
+              <span className="wl-nav-label">分类</span>
+              <button
+                className="wl-nav-section-add"
+                type="button"
+                title="新建分类"
+                aria-label="新建分类"
+                onClick={() => {
+                  setAddingCategory(current => !current)
+                  setCategoryDraft('')
+                }}
+              >＋</button>
+            </div>
+            {addingCategory && (
+              <form className="wl-category-form" onSubmit={submitCategory}>
+                <label className="wl-sr-only" htmlFor="wl-new-category">新分类名称</label>
+                <input
+                  id="wl-new-category"
+                  autoFocus
+                  className="wl-category-input"
+                  value={categoryDraft}
+                  maxLength={32}
+                  placeholder="分类名称"
+                  onChange={event => setCategoryDraft(event.target.value)}
+                  onKeyDown={event => {
+                    if (event.key === 'Escape') {
+                      setAddingCategory(false)
+                      setCategoryDraft('')
+                    }
+                  }}
+                />
+                <button className="wl-category-save" type="submit" aria-label="保存分类">✓</button>
+              </form>
+            )}
             {state.categories.map(category => {
               const count = activeTasks.filter(task => task.categoryId === category.id && !task.completed).length
               return (
@@ -795,15 +828,6 @@ export function WorkListPanel() {
                 </div>
               )
             })}
-            {addingCategory ? (
-              <form className="wl-category-form" onSubmit={submitCategory}>
-                <label className="wl-sr-only" htmlFor="wl-new-category">新分类名称</label>
-                <input id="wl-new-category" autoFocus className="wl-category-input" value={categoryDraft} maxLength={32} placeholder="分类名称" onChange={event => setCategoryDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { setAddingCategory(false); setCategoryDraft('') } }} />
-                <button className="wl-category-save" type="submit" aria-label="保存分类">✓</button>
-              </form>
-            ) : (
-              <button className="wl-nav-add" type="button" onClick={() => setAddingCategory(true)}>＋ 新建分类</button>
-            )}
             <div className="wl-nav-label">其他</div>
             <button className={`wl-nav-button ${selectedCategory === 'trash' ? 'is-active' : ''}`} type="button" onClick={() => { finishTaskEdit(); setSelectedCategory('trash'); setSearchQuery('') }}>
               <span className="wl-nav-icon" aria-hidden="true">♲</span>
