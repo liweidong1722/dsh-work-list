@@ -826,18 +826,6 @@ export function WorkListPanel() {
                   />
                   {searchQuery && <button type="button" title="清除搜索" aria-label="清除搜索" onClick={() => setSearchQuery('')}>×</button>}
                 </label>
-                <button className="wl-tool-button" type="button" onClick={exportWorkList}>导出</button>
-                <button className="wl-tool-button" type="button" onClick={() => importFileRef.current?.click()}>导入</button>
-                <input
-                  ref={importFileRef}
-                  className="wl-sr-only"
-                  type="file"
-                  accept="application/json,.json"
-                  onChange={event => {
-                    const file = event.target.files?.[0]
-                    if (file) void importWorkList(file)
-                  }}
-                />
                 {selectedCategory === 'trash' ? (
                   trashTasks.length > 0 && <button className="wl-clear" type="button" onClick={() => { if (window.confirm('清空回收站？此操作无法恢复。')) setState(current => emptyTrash(current)) }}>清空回收站</button>
                 ) : (
@@ -900,16 +888,30 @@ export function WorkListPanel() {
 
             <footer className="wl-foot">
               <span>{selectedCategory === 'trash' ? `${trashTasks.length} 项在回收站` : `${counts.active} 项待完成`}</span>
-              <span className={`wl-save-state is-${saveStatus}`}>
-                <i className="wl-save-dot" aria-hidden="true" />
-                {saveStatus === 'saved'
-                  ? '已保存 · ~/.dsh/work-list.json'
-                  : saveStatus === 'saving'
-                    ? '正在保存…'
-                    : saveStatus === 'fallback'
-                      ? '宿主暂不可用 · 已保留浏览器缓存'
-                      : '正在读取清单…'}
-              </span>
+              <div className="wl-foot-actions">
+                <button className="wl-foot-action" type="button" onClick={() => importFileRef.current?.click()}>导入</button>
+                <button className="wl-foot-action" type="button" onClick={exportWorkList}>导出</button>
+                <input
+                  ref={importFileRef}
+                  className="wl-sr-only"
+                  type="file"
+                  accept="application/json,.json"
+                  onChange={event => {
+                    const file = event.target.files?.[0]
+                    if (file) void importWorkList(file)
+                  }}
+                />
+                <span className={`wl-save-state is-${saveStatus}`}>
+                  <i className="wl-save-dot" aria-hidden="true" />
+                  {saveStatus === 'saved'
+                    ? '已保存 · ~/.dsh/work-list.json'
+                    : saveStatus === 'saving'
+                      ? '正在保存…'
+                      : saveStatus === 'fallback'
+                        ? '宿主暂不可用 · 已保留浏览器缓存'
+                        : '正在读取清单…'}
+                </span>
+              </div>
             </footer>
           </section>
         </div>
