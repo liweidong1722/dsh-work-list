@@ -592,6 +592,17 @@ export function WorkListPanel() {
         <button className="wl-rich-button" type="button" title="减少缩进" disabled={disabled} onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('outdent')}>⇤</button>
         <button className="wl-rich-button" type="button" title="增加缩进" disabled={disabled} onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('indent')}>⇥</button>
         <button className="wl-rich-button is-text" type="button" title="插入虚线分隔" disabled={disabled} onMouseDown={event => { event.preventDefault(); rememberRichSelection() }} onClick={() => runRichCommand('insertHorizontalRule')}>虚线</button>
+        <span className="wl-rich-sep" />
+        <div className="wl-toolbar-typography" aria-label="文字设置">
+          <span className="wl-typography-label">字体</span>
+          <button className="wl-size-button" type="button" aria-label="缩小字号" disabled={state.fontSize <= 12} onClick={() => setState(current => setTypography(current, { fontSize: current.fontSize - 1 }))}>−</button>
+          <output className="wl-size-value" aria-live="polite">{state.fontSize}px</output>
+          <button className="wl-size-button" type="button" aria-label="放大字号" disabled={state.fontSize >= 24} onClick={() => setState(current => setTypography(current, { fontSize: current.fontSize + 1 }))}>＋</button>
+          <label className="wl-sr-only" htmlFor="wl-font-family">字体样式</label>
+          <select id="wl-font-family" className="wl-font-select" value={state.fontFamily} onChange={event => setState(current => setTypography(current, { fontFamily: event.target.value }))}>
+            {Object.entries(FONT_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        </div>
         <span className="wl-rich-hint">
           {editingTask
             ? `正在编辑：${taskSummary(editingTask.title, editingTask.html)}`
@@ -723,23 +734,12 @@ export function WorkListPanel() {
             <p className="wl-subtitle">像记笔记一样整理工作，勾掉一项，就前进一步。</p>
           </div>
 
-          <div className="wl-typography" aria-label="文字设置">
-            <span className="wl-typography-label">字体</span>
-            <button className="wl-size-button" type="button" aria-label="缩小字号" disabled={state.fontSize <= 12} onClick={() => setState(current => setTypography(current, { fontSize: current.fontSize - 1 }))}>−</button>
-            <output className="wl-size-value" aria-live="polite">{state.fontSize}px</output>
-            <button className="wl-size-button" type="button" aria-label="放大字号" disabled={state.fontSize >= 24} onClick={() => setState(current => setTypography(current, { fontSize: current.fontSize + 1 }))}>＋</button>
-            <label className="wl-sr-only" htmlFor="wl-font-family">字体样式</label>
-            <select id="wl-font-family" className="wl-font-select" value={state.fontFamily} onChange={event => setState(current => setTypography(current, { fontFamily: event.target.value }))}>
-              {Object.entries(FONT_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-            </select>
-          </div>
         </header>
 
         {selectedCategory !== 'trash' && (
           <>
             {renderRichToolbar()}
             <form className="wl-add" onSubmit={submitTask}>
-          <span className="wl-add-mark" aria-hidden="true">＋</span>
           <label className="wl-sr-only" htmlFor="wl-new-task">添加一项</label>
           <div
             id="wl-new-task"
