@@ -2,7 +2,17 @@
 
 一个本地优先、支持富文本编辑的 DSH Web 侧边栏工作清单插件。
 
-当前版本：**0.1.1**
+当前版本：**0.1.2**
+
+## 🆕 v0.1.2 更新
+
+相比 v0.1.1：
+
+- 去掉新增事项输入框左侧多余的 `＋` 图标，界面更简洁。
+- 富文本工具栏改为吸顶显示，长清单向下滚动时仍可直接使用编辑功能。
+- 字体、字号增减和字体样式选择并入富文本工具栏，滚动时也始终可用。
+
+完整变更：https://github.com/liweidong1722/dsh-work-list/compare/v0.1.1...v0.1.2
 
 ## 🆕 v0.1.1 更新
 
@@ -21,7 +31,7 @@
 ### 推荐：通过 DSH 插件通道安装
 
 ```bash
-dsh plugin --profile web add github:liweidong1722/dsh-work-list#v0.1.1
+dsh plugin --profile web add github:liweidong1722/dsh-work-list#v0.1.2
 ```
 
 安装完成后重启 `dsh web` 并刷新页面，左侧会出现 **「工作清单」**。
@@ -46,7 +56,7 @@ DSH 的 `plugin add` 会调用 pnpm 完成依赖安装，并根据本包声明�
 包中已经包含构建好的 `lib/`，因此无需在安装机上重新编译：
 
 ```bash
-pnpm add github:liweidong1722/dsh-work-list#v0.1.1
+pnpm add github:liweidong1722/dsh-work-list#v0.1.2
 ```
 
 这种方式适合验证包内容或在其他工程中作为依赖使用。
